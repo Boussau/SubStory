@@ -1,0 +1,12 @@
+# CMake script for SubstStory package
+# Author: Bastien Boussau
+# Created: 21/11/2014
+
+ADD_EXECUTABLE(subststory SubstStory.cpp)
+TARGET_LINK_LIBRARIES(subststory ${LIBS})
+
+# Install progs
+INSTALL(TARGETS
+  subststory
+  DESTINATION bin)
+
