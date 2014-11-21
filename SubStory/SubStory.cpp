@@ -61,7 +61,7 @@ using namespace std;
 
 // From SeqLib:
 #include <Bpp/Seq/SiteTools.h>
-#include <Bpp/Seq/Alphabet/Alphabet.h>
+#include <Bpp/Seq/Alphabet.all>
 #include <Bpp/Seq/AlphabetIndex/UserAlphabetIndex1.h>
 #include <Bpp/Seq/Container/VectorSiteContainer.h>
 #include <Bpp/Seq/Container/SequenceContainerTools.h>
@@ -101,6 +101,25 @@ void help()
   (*ApplicationTools::message << "  Refer to the Bio++ Manual for a list of available options.").endLine();
   (*ApplicationTools::message << "__________________________________________________________________________").endLine();
 }
+
+
+
+void buildCountTree(
+  const vector< vector<double> >& counts,
+  const vector<int>& ids,
+  Tree* cTree,
+  size_t type)
+{
+  for (size_t i = 0; i < ids.size(); ++i)
+  {
+    if (cTree->hasFather(ids[i]))
+    {
+      cTree->setDistanceToFather(ids[i], counts[i][type]);
+    }
+  }
+}
+
+
 
 int main(int args, char ** argv)
 {
@@ -512,7 +531,7 @@ int main(int args, char ** argv)
     //
 
     SubstitutionRegister* reg = 0;
-    string regTypeDesc = ApplicationTools::getStringParameter("map.type", mapnh.getParams(), "All", "", true, false);
+    string regTypeDesc = ApplicationTools::getStringParameter("map.type", substory.getParams(), "All", "", true, false);
     string regType = "";
     map<string, string> regArgs;
     KeyvalTools::parseProcedure(regTypeDesc, regType, regArgs);
@@ -527,7 +546,7 @@ int main(int args, char ** argv)
       reg = new TotalSubstitutionRegister(model);
     }    
     else if (regType == "Selected"){  
-      string subsList = ApplicationTools::getStringParameter("substitution.list", mapnh.getParams(), "All", "", true, false);
+      string subsList = ApplicationTools::getStringParameter("substitution.list", substory.getParams(), "All", "", true, false);
       reg = new SelectedSubstitutionRegister(model, subsList);  
     }
     else if (regType == "IntraAA")
@@ -584,7 +603,7 @@ int main(int args, char ** argv)
       ApplicationTools::displayResult("  * Count type " + TextTools::toString(i + 1), reg->getTypeName(i + 1));
 
     // specific parameters to the null models
-    string nullModelParams = ApplicationTools::getStringParameter("nullModelParams", mapnh.getParams(), "");
+    string nullModelParams = ApplicationTools::getStringParameter("nullModelParams", substory.getParams(), "");
 
     ParameterList nullParams;
     if (nullModelParams != "")
@@ -611,7 +630,7 @@ int main(int args, char ** argv)
     vector<int> ids = tl->getTree().getNodesId();
     ids.pop_back(); // remove root id.
     vector< vector<double> > counts;
-    double thresholdSat = ApplicationTools::getDoubleParameter("count.max", mapnh.getParams(), -1);
+    double thresholdSat = ApplicationTools::getDoubleParameter("count.max", substory.getParams(), -1);
     if (thresholdSat > 0)
       ApplicationTools::displayResult("Saturation threshold used", thresholdSat);
 
@@ -660,7 +679,7 @@ int main(int args, char ** argv)
     else
       counts = SubstitutionMappingTools::getRelativeCountsPerBranch(*tl, ids, model ? model : modelSet->getModel(0), *reg, stationarity, thresholdSat);
 
-    vector<string> outputDesc = ApplicationTools::getVectorParameter<string>("output.counts", mapnh.getParams(), ',', "PerType(prefix=)");
+    vector<string> outputDesc = ApplicationTools::getVectorParameter<string>("output.counts", substory.getParams(), ',', "PerType(prefix=)");
     for (vector<string>::iterator it = outputDesc.begin(); it != outputDesc.end(); ++it) {
       string outputType;
       map<string, string> outputArgs;
@@ -738,20 +757,6 @@ int main(int args, char ** argv)
 
 
 
-void buildCountTree(
-  const vector< vector<double> >& counts,
-  const vector<int>& ids,
-  Tree* cTree,
-  size_t type)
-{
-  for (size_t i = 0; i < ids.size(); ++i)
-  {
-    if (cTree->hasFather(ids[i]))
-    {
-      cTree->setDistanceToFather(ids[i], counts[i][type]);
-    }
-  }
-}
 
 
 
@@ -774,31 +779,31 @@ int main(int args, char** argv)
 
   try
   {
-    BppApplication mapnh(args, argv, "MapNH");
-    mapnh.startTimer();
+    BppApplication substory(args, argv, "MapNH");
+    substory.startTimer();
 
-    Alphabet* alphabet = SequenceApplicationTools::getAlphabet(mapnh.getParams(), "", false);
+    Alphabet* alphabet = SequenceApplicationTools::getAlphabet(substory.getParams(), "", false);
     auto_ptr<GeneticCode> gCode;
     CodonAlphabet* codonAlphabet = dynamic_cast<CodonAlphabet*>(alphabet);
     if (codonAlphabet) {
-      string codeDesc = ApplicationTools::getStringParameter("genetic_code", mapnh.getParams(), "Standard", "", true, true);
+      string codeDesc = ApplicationTools::getStringParameter("genetic_code", substory.getParams(), "Standard", "", true, true);
       ApplicationTools::displayResult("Genetic Code", codeDesc);
       
       gCode.reset(SequenceApplicationTools::getGeneticCode(codonAlphabet->getNucleicAlphabet(), codeDesc));
     }
 
-    VectorSiteContainer* allSites = SequenceApplicationTools::getSiteContainer(alphabet, mapnh.getParams());
-    VectorSiteContainer* sites = SequenceApplicationTools::getSitesToAnalyse(*allSites, mapnh.getParams());
+    VectorSiteContainer* allSites = SequenceApplicationTools::getSiteContainer(alphabet, substory.getParams());
+    VectorSiteContainer* sites = SequenceApplicationTools::getSitesToAnalyse(*allSites, substory.getParams());
     delete allSites;
 
     ApplicationTools::displayResult("Number of sequences", TextTools::toString(sites->getNumberOfSequences()));
     ApplicationTools::displayResult("Number of sites", TextTools::toString(sites->getNumberOfSites()));
 
     // Get the initial tree
-    Tree* tree = PhylogeneticsApplicationTools::getTree(mapnh.getParams());
+    Tree* tree = PhylogeneticsApplicationTools::getTree(substory.getParams());
     ApplicationTools::displayResult("Number of leaves", TextTools::toString(tree->getNumberOfLeaves()));
     // Convert to NHX if input tree is newick or nexus?
-    string treeIdOut = ApplicationTools::getAFilePath("output.tree_with_id.file", mapnh.getParams(), false, false);
+    string treeIdOut = ApplicationTools::getAFilePath("output.tree_with_id.file", substory.getParams(), false, false);
     if (treeIdOut != "none")
     {
       Nhx nhx(true);
@@ -809,7 +814,7 @@ int main(int args, char** argv)
     // Get substitution model and compute likelihood arrays
     //
 
-    string nhOpt = ApplicationTools::getStringParameter("nonhomogeneous", mapnh.getParams(), "no", "", true, false);
+    string nhOpt = ApplicationTools::getStringParameter("nonhomogeneous", substory.getParams(), "no", "", true, false);
     ApplicationTools::displayResult("Heterogeneous model", nhOpt);
 
     DRTreeLikelihood* tl     = 0;
@@ -819,7 +824,7 @@ int main(int args, char** argv)
 
     if (nhOpt == "no")
     {
-      model = PhylogeneticsApplicationTools::getSubstitutionModel(alphabet, gCode.get(), sites, mapnh.getParams());
+      model = PhylogeneticsApplicationTools::getSubstitutionModel(alphabet, gCode.get(), sites, substory.getParams());
       if (model->getName() != "RE08")
         SiteContainerTools::changeGapsToUnknownCharacters(*sites);
       if (model->getNumberOfStates() > model->getAlphabet()->getSize())
@@ -829,14 +834,14 @@ int main(int args, char** argv)
       }
       else
       {
-        rDist = PhylogeneticsApplicationTools::getRateDistribution(mapnh.getParams());
+        rDist = PhylogeneticsApplicationTools::getRateDistribution(substory.getParams());
       }
       
       tl = new DRHomogeneousTreeLikelihood(*tree, *sites, model, rDist, false, false);
     }
     else if (nhOpt == "one_per_branch")
     {
-      model = PhylogeneticsApplicationTools::getSubstitutionModel(alphabet, gCode.get(), sites, mapnh.getParams());
+      model = PhylogeneticsApplicationTools::getSubstitutionModel(alphabet, gCode.get(), sites, substory.getParams());
       if (model->getName() != "RE08")
         SiteContainerTools::changeGapsToUnknownCharacters(*sites);
       if (model->getNumberOfStates() > model->getAlphabet()->getSize())
@@ -846,7 +851,7 @@ int main(int args, char** argv)
       }
       else
       {
-        rDist = PhylogeneticsApplicationTools::getRateDistribution(mapnh.getParams());
+        rDist = PhylogeneticsApplicationTools::getRateDistribution(substory.getParams());
       }
       vector<double> rateFreqs;
       if (model->getNumberOfStates() != alphabet->getSize())
@@ -856,14 +861,14 @@ int main(int args, char** argv)
         rateFreqs = vector<double>(n, 1. / static_cast<double>(n)); // Equal rates assumed for now, may be changed later (actually, in the most general case,
         // we should assume a rate distribution for the root also!!!
       }
-      FrequenciesSet* rootFreqs = PhylogeneticsApplicationTools::getRootFrequenciesSet(alphabet, gCode.get(), sites, mapnh.getParams(), rateFreqs);
-      vector<string> globalParameters = ApplicationTools::getVectorParameter<string>("nonhomogeneous_one_per_branch.shared_parameters", mapnh.getParams(), ',', "");
+      FrequenciesSet* rootFreqs = PhylogeneticsApplicationTools::getRootFrequenciesSet(alphabet, gCode.get(), sites, substory.getParams(), rateFreqs);
+      vector<string> globalParameters = ApplicationTools::getVectorParameter<string>("nonhomogeneous_one_per_branch.shared_parameters", substory.getParams(), ',', "");
       modelSet = SubstitutionModelSetTools::createNonHomogeneousModelSet(model, rootFreqs, tree, globalParameters);
       tl = new DRNonHomogeneousTreeLikelihood(*tree, *sites, modelSet, rDist, false, false);
     }
     else if (nhOpt == "general")
     {
-      modelSet = PhylogeneticsApplicationTools::getSubstitutionModelSet(alphabet, gCode.get(), sites, mapnh.getParams());
+      modelSet = PhylogeneticsApplicationTools::getSubstitutionModelSet(alphabet, gCode.get(), sites, substory.getParams());
       model = modelSet->getModel(0);
       if (modelSet->getModel(0)->getName() != "RE08")
         SiteContainerTools::changeGapsToUnknownCharacters(*sites);
@@ -874,7 +879,7 @@ int main(int args, char** argv)
       }
       else
       {
-        rDist = PhylogeneticsApplicationTools::getRateDistribution(mapnh.getParams());
+        rDist = PhylogeneticsApplicationTools::getRateDistribution(substory.getParams());
       }
       tl = new DRNonHomogeneousTreeLikelihood(*tree, *sites, modelSet, rDist, false, false);
     }
@@ -908,7 +913,7 @@ int main(int args, char** argv)
         if (f)
           exit(-1);
       }
-      bool removeSaturated = ApplicationTools::getBooleanParameter("input.sequence.remove_saturated_sites", mapnh.getParams(), false, "", true, 1);
+      bool removeSaturated = ApplicationTools::getBooleanParameter("input.sequence.remove_saturated_sites", substory.getParams(), false, "", true, 1);
       if (!removeSaturated) {
         ofstream debug ("DEBUG_likelihoods.txt", ios::out);
         for (size_t i = 0; i < sites->getNumberOfSites(); i++)
@@ -949,7 +954,7 @@ int main(int args, char** argv)
       delete model;
     delete rDist;
     delete reg;
-    mapnh.done();
+    substory.done();
   }
   catch (exception& e)
   {
