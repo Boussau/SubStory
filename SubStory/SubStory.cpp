@@ -500,228 +500,14 @@ int main(int args, char ** argv)
     delete infos;
   }
 
-
-  delete alphabet;
-  delete sites;
-  if(model)    delete model;
-  if(modelSet) delete modelSet;
-  delete rDist;
-  delete tl;
-  delete tree;
-  substory.done();
-
-  }
-  catch (exception & e)
-  {
-    cout << e.what() << endl;
-    return 1;
-  }
-
-  return 0;
-}
-
-
-
-
-void buildCountTree(
-  const vector< vector<double> >& counts,
-  const vector<int>& ids,
-  Tree* cTree,
-  size_t type)
-{
-  for (size_t i = 0; i < ids.size(); ++i)
-  {
-    if (cTree->hasFather(ids[i]))
-    {
-      cTree->setDistanceToFather(ids[i], counts[i][type]);
-    }
-  }
-}
-
-
-int main(int args, char** argv)
-{
-  cout << "******************************************************************" << endl;
-  cout << "*                     Map NH, version 0.2.0                      *" << endl;
-  cout << "* Authors: J. Dutheil                       Created on  09/12/10 *" << endl;
-  cout << "*          B. Boussau                       Modif. 17/12/11      *" << endl;
-  cout << "*          L. Guéguen                       Last Modif. 17/06/13 *" << endl;
-  cout << "******************************************************************" << endl;
-  cout << endl;
-
-  if (args == 1)
-  {
-    help();
-    exit(0);
-  }
-
-  try
-  {
-    BppApplication mapnh(args, argv, "MapNH");
-    mapnh.startTimer();
-
-    Alphabet* alphabet = SequenceApplicationTools::getAlphabet(mapnh.getParams(), "", false);
-    auto_ptr<GeneticCode> gCode;
-    CodonAlphabet* codonAlphabet = dynamic_cast<CodonAlphabet*>(alphabet);
-    if (codonAlphabet) {
-      string codeDesc = ApplicationTools::getStringParameter("genetic_code", mapnh.getParams(), "Standard", "", true, true);
-      ApplicationTools::displayResult("Genetic Code", codeDesc);
-      
-      gCode.reset(SequenceApplicationTools::getGeneticCode(codonAlphabet->getNucleicAlphabet(), codeDesc));
-    }
-
-    VectorSiteContainer* allSites = SequenceApplicationTools::getSiteContainer(alphabet, mapnh.getParams());
-    VectorSiteContainer* sites = SequenceApplicationTools::getSitesToAnalyse(*allSites, mapnh.getParams());
-    delete allSites;
-
-    ApplicationTools::displayResult("Number of sequences", TextTools::toString(sites->getNumberOfSequences()));
-    ApplicationTools::displayResult("Number of sites", TextTools::toString(sites->getNumberOfSites()));
-
-    // Get the initial tree
-    Tree* tree = PhylogeneticsApplicationTools::getTree(mapnh.getParams());
-    ApplicationTools::displayResult("Number of leaves", TextTools::toString(tree->getNumberOfLeaves()));
-    // Convert to NHX if input tree is newick or nexus?
-    string treeIdOut = ApplicationTools::getAFilePath("output.tree_with_id.file", mapnh.getParams(), false, false);
-    if (treeIdOut != "none")
-    {
-      Nhx nhx(true);
-      nhx.write(*tree, treeIdOut);
-    }
-
-    //
-    // Get substitution model and compute likelihood arrays
-    //
-
-    string nhOpt = ApplicationTools::getStringParameter("nonhomogeneous", mapnh.getParams(), "no", "", true, false);
-    ApplicationTools::displayResult("Heterogeneous model", nhOpt);
-
-    DRTreeLikelihood* drtl     = 0;
-    SubstitutionModel* model    = 0;
-    SubstitutionModelSet* modelSet = 0;
-    DiscreteDistribution* rDist    = 0;
-
-    if (nhOpt == "no")
-    {
-      model = PhylogeneticsApplicationTools::getSubstitutionModel(alphabet, gCode.get(), sites, mapnh.getParams());
-      if (model->getName() != "RE08")
-        SiteContainerTools::changeGapsToUnknownCharacters(*sites);
-      if (model->getNumberOfStates() > model->getAlphabet()->getSize())
-      {
-        // Markov-modulated Markov model!
-        rDist = new ConstantRateDistribution();
-      }
-      else
-      {
-        rDist = PhylogeneticsApplicationTools::getRateDistribution(mapnh.getParams());
-      }
-      
-      drtl = new DRHomogeneousTreeLikelihood(*tree, *sites, model, rDist, false, false);
-    }
-    else if (nhOpt == "one_per_branch")
-    {
-      model = PhylogeneticsApplicationTools::getSubstitutionModel(alphabet, gCode.get(), sites, mapnh.getParams());
-      if (model->getName() != "RE08")
-        SiteContainerTools::changeGapsToUnknownCharacters(*sites);
-      if (model->getNumberOfStates() > model->getAlphabet()->getSize())
-      {
-        // Markov-modulated Markov model!
-        rDist = new ConstantRateDistribution();
-      }
-      else
-      {
-        rDist = PhylogeneticsApplicationTools::getRateDistribution(mapnh.getParams());
-      }
-      vector<double> rateFreqs;
-      if (model->getNumberOfStates() != alphabet->getSize())
-      {
-        // Markov-Modulated Markov Model...
-        size_t n = (size_t)(model->getNumberOfStates() / alphabet->getSize());
-        rateFreqs = vector<double>(n, 1. / static_cast<double>(n)); // Equal rates assumed for now, may be changed later (actually, in the most general case,
-        // we should assume a rate distribution for the root also!!!
-      }
-      FrequenciesSet* rootFreqs = PhylogeneticsApplicationTools::getRootFrequenciesSet(alphabet, gCode.get(), sites, mapnh.getParams(), rateFreqs);
-      vector<string> globalParameters = ApplicationTools::getVectorParameter<string>("nonhomogeneous_one_per_branch.shared_parameters", mapnh.getParams(), ',', "");
-      modelSet = SubstitutionModelSetTools::createNonHomogeneousModelSet(model, rootFreqs, tree, globalParameters);
-      drtl = new DRNonHomogeneousTreeLikelihood(*tree, *sites, modelSet, rDist, false, false);
-    }
-    else if (nhOpt == "general")
-    {
-      modelSet = PhylogeneticsApplicationTools::getSubstitutionModelSet(alphabet, gCode.get(), sites, mapnh.getParams());
-      model = modelSet->getModel(0);
-      if (modelSet->getModel(0)->getName() != "RE08")
-        SiteContainerTools::changeGapsToUnknownCharacters(*sites);
-      if (modelSet->getNumberOfStates() > modelSet->getAlphabet()->getSize())
-      {
-        // Markov-modulated Markov model!
-        rDist = new ConstantDistribution(1.);
-      }
-      else
-      {
-        rDist = PhylogeneticsApplicationTools::getRateDistribution(mapnh.getParams());
-      }
-      drtl = new DRNonHomogeneousTreeLikelihood(*tree, *sites, modelSet, rDist, false, false);
-    }
-    else
-      throw Exception("Unknown option for nonhomogeneous: " + nhOpt);
-    drtl->initialize();
-
-    ApplicationTools::displayResult("Log-Likelihood", drtl->getLogLikelihood());
-
-    //Check for saturation:
-    double ll = drtl->getValue();
-    if (isinf(ll))
-    {
-      ApplicationTools::displayError("!!! Unexpected initial likelihood == 0.");
-      if (codonAlphabet)
-      {
-        bool f = false;
-        size_t s;
-        for (size_t i = 0; i < sites->getNumberOfSites(); i++) {
-          if (isinf(drtl->getLogLikelihoodForASite(i))) {
-            const Site& site = sites->getSite(i);
-            s = site.size();
-            for (size_t j = 0; j < s; j++) {
-              if (gCode->isStop(site.getValue(j))) {
-                (*ApplicationTools::error << "Stop Codon at site " << site.getPosition() << " in sequence " << sites->getSequence(j).getName()).endLine();
-                f = true;
-              }
-            }
-          }
-        }
-        if (f)
-          exit(-1);
-      }
-      bool removeSaturated = ApplicationTools::getBooleanParameter("input.sequence.remove_saturated_sites", mapnh.getParams(), false, "", true, 1);
-      if (!removeSaturated) {
-        ofstream debug ("DEBUG_likelihoods.txt", ios::out);
-        for (size_t i = 0; i < sites->getNumberOfSites(); i++)
-        {
-          debug << "Position " << sites->getSite(i).getPosition() << " = " << drtl->getLogLikelihoodForASite(i) << endl; 
-        }
-        debug.close();
-        ApplicationTools::displayError("!!! Site-specific likelihood have been written in file DEBUG_likelihoods.txt .");
-        ApplicationTools::displayError("!!! 0 values (inf in log) may be due to computer overflow, particularily if datasets are big (>~500 sequences).");
-        ApplicationTools::displayError("!!! You may want to try input.sequence.remove_saturated_sites = yes to ignore positions with likelihood 0.");
-        exit(1);
-      } else {
-        for (size_t i = sites->getNumberOfSites(); i > 0; --i) {
-          if (isinf(drtl->getLogLikelihoodForASite(i - 1))) {
-            ApplicationTools::displayResult("Ignore saturated site", sites->getSite(i - 1).getPosition());
-            sites->deleteSite(i - 1);
-          }
-        }
-        ApplicationTools::displayResult("Number of sites retained", sites->getNumberOfSites());
-        drtl->setData(*sites);
-        drtl->initialize();
-        ll = drtl->getValue();
-        if (isinf(ll)) {
-          throw Exception("Likelihood is still 0 after saturated sites are removed! Looks like a bug...");
-        }
-        ApplicationTools::displayResult("Initial log likelihood", TextTools::toString(-ll, 15));
-      }
-    }
-    
-    //
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  //   Ancestral sequence reconstruction over, now doing substitution mapping
+  //
+  //////////////////////////////////////////////////////////////////////////////
+  
+  
+      //
     // Initialize the parameters for the mapping:
     //
 
@@ -822,7 +608,7 @@ int main(int args, char** argv)
     // Performs mapping
     //
 
-    vector<int> ids = drtl->getTree().getNodesId();
+    vector<int> ids = tl->getTree().getNodesId();
     ids.pop_back(); // remove root id.
     vector< vector<double> > counts;
     double thresholdSat = ApplicationTools::getDoubleParameter("count.max", mapnh.getParams(), -1);
@@ -849,7 +635,7 @@ int main(int args, char** argv)
 
         nullModel->matchParametersValues(pl);
         
-        counts = SubstitutionMappingTools::getNormalizedCountsPerBranch(*drtl, ids, model, nullModel.get(), *reg, true);
+        counts = SubstitutionMappingTools::getNormalizedCountsPerBranch(*tl, ids, model, nullModel.get(), *reg, true);
       }
       else
       {
@@ -868,11 +654,11 @@ int main(int args, char** argv)
 
         nullModelSet->matchParametersValues(pl);
 
-        counts = SubstitutionMappingTools::getNormalizedCountsPerBranch(*drtl, ids, modelSet, nullModelSet.get(), *reg, true);
+        counts = SubstitutionMappingTools::getNormalizedCountsPerBranch(*tl, ids, modelSet, nullModelSet.get(), *reg, true);
       }
     }
     else
-      counts = SubstitutionMappingTools::getRelativeCountsPerBranch(*drtl, ids, model ? model : modelSet->getModel(0), *reg, stationarity, thresholdSat);
+      counts = SubstitutionMappingTools::getRelativeCountsPerBranch(*tl, ids, model ? model : modelSet->getModel(0), *reg, stationarity, thresholdSat);
 
     vector<string> outputDesc = ApplicationTools::getVectorParameter<string>("output.counts", mapnh.getParams(), ',', "PerType(prefix=)");
     for (vector<string>::iterator it = outputDesc.begin(); it != outputDesc.end(); ++it) {
@@ -902,7 +688,7 @@ int main(int args, char** argv)
         string perSitenf = ApplicationTools::getStringParameter("file", outputArgs, "mapping_counts_per_site.txt", "", true, 1);
         if (perSitenf != "none")
         {
-          SubstitutionMappingTools::outputTotalCountsPerBranchPerSite(perSitenf, *drtl, ids, model ? model : modelSet->getModel(0), *reg);
+          SubstitutionMappingTools::outputTotalCountsPerBranchPerSite(perSitenf, *tl, ids, model ? model : modelSet->getModel(0), *reg);
         }
       }
       else if (outputType == "PerSitePerType")
@@ -910,7 +696,7 @@ int main(int args, char** argv)
         string tablePathPrefix = ApplicationTools::getStringParameter("prefix", outputArgs, "mapping_counts_per_site_per_type_", "", true, 1);
         if (tablePathPrefix != "none")
         {
-          SubstitutionMappingTools::outputIndividualCountsPerBranchPerSite(tablePathPrefix, *drtl, ids, model ? model : modelSet->getModel(0), *reg);
+          SubstitutionMappingTools::outputIndividualCountsPerBranchPerSite(tablePathPrefix, *tl, ids, model ? model : modelSet->getModel(0), *reg);
         }
       }
     }
@@ -928,90 +714,231 @@ int main(int args, char** argv)
     }
 
 
-    // Global homogeneity test:
-    bool testGlobal = ApplicationTools::getBooleanParameter("test.global", mapnh.getParams(), true, "", true, false);
-    if (testGlobal)
+  
+
+  delete alphabet;
+  delete sites;
+  if(model)    delete model;
+  if(modelSet) delete modelSet;
+  delete rDist;
+  delete tl;
+  delete tree;
+  substory.done();
+
+  }
+  catch (exception & e)
+  {
+    cout << e.what() << endl;
+    return 1;
+  }
+
+  return 0;
+}
+
+
+
+
+void buildCountTree(
+  const vector< vector<double> >& counts,
+  const vector<int>& ids,
+  Tree* cTree,
+  size_t type)
+{
+  for (size_t i = 0; i < ids.size(); ++i)
+  {
+    if (cTree->hasFather(ids[i]))
     {
-      vector< vector<size_t> > counts2 = countsint;
-
-      // Check if some branches are 0:
-      for (size_t i = counts2.size(); i > 0; --i)
-      {
-        if (VectorTools::sum(counts2[i - 1]) == 0)
-        {
-          ApplicationTools::displayResult("Remove branch with no substitution", ids[i - 1]);
-          counts2.erase(counts2.begin() + static_cast<ptrdiff_t>(i - 1));
-          // ids.erase(ids.begin() + i - 1);
-        }
-      }
-      ApplicationTools::displayResult("Nb. of branches included in test", counts2.size());
+      cTree->setDistanceToFather(ids[i], counts[i][type]);
+    }
+  }
+}
 
 
-      ContingencyTableTest test(counts2, 2000);
-      ApplicationTools::displayResult("Global Chi2", test.getStatistic());
-      ApplicationTools::displayResult("Global Chi2, p-value", test.getPValue());
-      double pvalue = SimpleSubstitutionCountsComparison::multinomialTest(counts2);
-      ApplicationTools::displayResult("Global heterogeneity test p-value", pvalue);
+
+/*
+int main(int args, char** argv)
+{
+  cout << "******************************************************************" << endl;
+  cout << "*                     Map NH, version 0.2.0                      *" << endl;
+  cout << "* Authors: J. Dutheil                       Created on  09/12/10 *" << endl;
+  cout << "*          B. Boussau                       Modif. 17/12/11      *" << endl;
+  cout << "*          L. Guéguen                       Last Modif. 17/06/13 *" << endl;
+  cout << "******************************************************************" << endl;
+  cout << endl;
+
+  if (args == 1)
+  {
+    help();
+    exit(0);
+  }
+
+  try
+  {
+    BppApplication mapnh(args, argv, "MapNH");
+    mapnh.startTimer();
+
+    Alphabet* alphabet = SequenceApplicationTools::getAlphabet(mapnh.getParams(), "", false);
+    auto_ptr<GeneticCode> gCode;
+    CodonAlphabet* codonAlphabet = dynamic_cast<CodonAlphabet*>(alphabet);
+    if (codonAlphabet) {
+      string codeDesc = ApplicationTools::getStringParameter("genetic_code", mapnh.getParams(), "Standard", "", true, true);
+      ApplicationTools::displayResult("Genetic Code", codeDesc);
+      
+      gCode.reset(SequenceApplicationTools::getGeneticCode(codonAlphabet->getNucleicAlphabet(), codeDesc));
     }
 
-    // Branch test!
-    bool testBranch = ApplicationTools::getBooleanParameter("test.branch", mapnh.getParams(), false, "", true, false);
-    if (testBranch)
+    VectorSiteContainer* allSites = SequenceApplicationTools::getSiteContainer(alphabet, mapnh.getParams());
+    VectorSiteContainer* sites = SequenceApplicationTools::getSitesToAnalyse(*allSites, mapnh.getParams());
+    delete allSites;
+
+    ApplicationTools::displayResult("Number of sequences", TextTools::toString(sites->getNumberOfSequences()));
+    ApplicationTools::displayResult("Number of sites", TextTools::toString(sites->getNumberOfSites()));
+
+    // Get the initial tree
+    Tree* tree = PhylogeneticsApplicationTools::getTree(mapnh.getParams());
+    ApplicationTools::displayResult("Number of leaves", TextTools::toString(tree->getNumberOfLeaves()));
+    // Convert to NHX if input tree is newick or nexus?
+    string treeIdOut = ApplicationTools::getAFilePath("output.tree_with_id.file", mapnh.getParams(), false, false);
+    if (treeIdOut != "none")
     {
-      bool testNeighb = ApplicationTools::getBooleanParameter("test.branch.neighbor", mapnh.getParams(), true, "", true, false);
-      bool testNegBrL = ApplicationTools::getBooleanParameter("test.branch.negbrlen", mapnh.getParams(), false, "", true, false);
-      ApplicationTools::displayBooleanResult("Perform branch clustering", testBranch);
-      ApplicationTools::displayBooleanResult("Cluster only neighbor nodes", testNeighb);
-      ApplicationTools::displayBooleanResult("Allow len < 0 in clustering", testNegBrL);
-      string autoClustDesc = ApplicationTools::getStringParameter("test.branch.auto_cluster", mapnh.getParams(), "Global(threshold=0)");
-      string autoClustName;
-      map<string, string> autoClustParam;
-      KeyvalTools::parseProcedure(autoClustDesc, autoClustName, autoClustParam);
-      ApplicationTools::displayResult("Auto-clustering", autoClustName);
-      auto_ptr<AutomaticGroupingCondition> autoClust;
-      if (autoClustName == "None")
+      Nhx nhx(true);
+      nhx.write(*tree, treeIdOut);
+    }
+
+    //
+    // Get substitution model and compute likelihood arrays
+    //
+
+    string nhOpt = ApplicationTools::getStringParameter("nonhomogeneous", mapnh.getParams(), "no", "", true, false);
+    ApplicationTools::displayResult("Heterogeneous model", nhOpt);
+
+    DRTreeLikelihood* tl     = 0;
+    SubstitutionModel* model    = 0;
+    SubstitutionModelSet* modelSet = 0;
+    DiscreteDistribution* rDist    = 0;
+
+    if (nhOpt == "no")
+    {
+      model = PhylogeneticsApplicationTools::getSubstitutionModel(alphabet, gCode.get(), sites, mapnh.getParams());
+      if (model->getName() != "RE08")
+        SiteContainerTools::changeGapsToUnknownCharacters(*sites);
+      if (model->getNumberOfStates() > model->getAlphabet()->getSize())
       {
-        autoClust.reset(new NoAutomaticGroupingCondition());
-      }
-      else if (autoClustName == "Global")
-      {
-        size_t threshold = ApplicationTools::getParameter<size_t>("threshold", autoClustParam, 0);
-        ApplicationTools::displayResult("Auto-clutering threshold", threshold);
-        CategorySubstitutionRegister* creg = dynamic_cast<CategorySubstitutionRegister*>(reg);
-        vector<size_t> ignore;
-        if (creg && creg->allowWithin())
-        {
-          size_t n = creg->getNumberOfCategories();
-          for (size_t i = 0; i < n; ++i)
-          {
-            ignore.push_back(n * (n - 1) + i);
-          }
-        }
-        autoClust.reset(new SumCountsAutomaticGroupingCondition(threshold, ignore));
-      }
-      else if (autoClustName == "Marginal")
-      {
-        size_t threshold = ApplicationTools::getParameter<size_t>("threshold", autoClustParam, 0);
-        ApplicationTools::displayResult("Auto-clutering threshold", threshold);
-        autoClust.reset(new AnyCountAutomaticGroupingCondition(threshold));
+        // Markov-modulated Markov model!
+        rDist = new ConstantRateDistribution();
       }
       else
       {
-        throw Exception("Unknown automatic clustering option: " + autoClustName);
+        rDist = PhylogeneticsApplicationTools::getRateDistribution(mapnh.getParams());
       }
-
-      // ChiClustering htest(counts, ids, true);
-      MultinomialClustering htest(countsint, ids, drtl->getTree(), *autoClust, testNeighb, testNegBrL, true);
-      ApplicationTools::displayResult("P-value at root node", *(htest.getPValues().rbegin()));
-      ApplicationTools::displayResult("Number of tests performed", htest.getPValues().size());
-      TreeTemplate<Node>* htree = htest.getTree();
-      Newick newick;
-      string clusterTreeOut = ApplicationTools::getAFilePath("output.cluster_tree.file", mapnh.getParams(), false, false);
-      ApplicationTools::displayResult("Output cluster tree to", clusterTreeOut);
-      newick.write(*htree, clusterTreeOut);
-      delete htree;
+      
+      tl = new DRHomogeneousTreeLikelihood(*tree, *sites, model, rDist, false, false);
     }
+    else if (nhOpt == "one_per_branch")
+    {
+      model = PhylogeneticsApplicationTools::getSubstitutionModel(alphabet, gCode.get(), sites, mapnh.getParams());
+      if (model->getName() != "RE08")
+        SiteContainerTools::changeGapsToUnknownCharacters(*sites);
+      if (model->getNumberOfStates() > model->getAlphabet()->getSize())
+      {
+        // Markov-modulated Markov model!
+        rDist = new ConstantRateDistribution();
+      }
+      else
+      {
+        rDist = PhylogeneticsApplicationTools::getRateDistribution(mapnh.getParams());
+      }
+      vector<double> rateFreqs;
+      if (model->getNumberOfStates() != alphabet->getSize())
+      {
+        // Markov-Modulated Markov Model...
+        size_t n = (size_t)(model->getNumberOfStates() / alphabet->getSize());
+        rateFreqs = vector<double>(n, 1. / static_cast<double>(n)); // Equal rates assumed for now, may be changed later (actually, in the most general case,
+        // we should assume a rate distribution for the root also!!!
+      }
+      FrequenciesSet* rootFreqs = PhylogeneticsApplicationTools::getRootFrequenciesSet(alphabet, gCode.get(), sites, mapnh.getParams(), rateFreqs);
+      vector<string> globalParameters = ApplicationTools::getVectorParameter<string>("nonhomogeneous_one_per_branch.shared_parameters", mapnh.getParams(), ',', "");
+      modelSet = SubstitutionModelSetTools::createNonHomogeneousModelSet(model, rootFreqs, tree, globalParameters);
+      tl = new DRNonHomogeneousTreeLikelihood(*tree, *sites, modelSet, rDist, false, false);
+    }
+    else if (nhOpt == "general")
+    {
+      modelSet = PhylogeneticsApplicationTools::getSubstitutionModelSet(alphabet, gCode.get(), sites, mapnh.getParams());
+      model = modelSet->getModel(0);
+      if (modelSet->getModel(0)->getName() != "RE08")
+        SiteContainerTools::changeGapsToUnknownCharacters(*sites);
+      if (modelSet->getNumberOfStates() > modelSet->getAlphabet()->getSize())
+      {
+        // Markov-modulated Markov model!
+        rDist = new ConstantDistribution(1.);
+      }
+      else
+      {
+        rDist = PhylogeneticsApplicationTools::getRateDistribution(mapnh.getParams());
+      }
+      tl = new DRNonHomogeneousTreeLikelihood(*tree, *sites, modelSet, rDist, false, false);
+    }
+    else
+      throw Exception("Unknown option for nonhomogeneous: " + nhOpt);
+    tl->initialize();
 
+    ApplicationTools::displayResult("Log-Likelihood", tl->getLogLikelihood());
+
+    //Check for saturation:
+    double ll = tl->getValue();
+    if (isinf(ll))
+    {
+      ApplicationTools::displayError("!!! Unexpected initial likelihood == 0.");
+      if (codonAlphabet)
+      {
+        bool f = false;
+        size_t s;
+        for (size_t i = 0; i < sites->getNumberOfSites(); i++) {
+          if (isinf(tl->getLogLikelihoodForASite(i))) {
+            const Site& site = sites->getSite(i);
+            s = site.size();
+            for (size_t j = 0; j < s; j++) {
+              if (gCode->isStop(site.getValue(j))) {
+                (*ApplicationTools::error << "Stop Codon at site " << site.getPosition() << " in sequence " << sites->getSequence(j).getName()).endLine();
+                f = true;
+              }
+            }
+          }
+        }
+        if (f)
+          exit(-1);
+      }
+      bool removeSaturated = ApplicationTools::getBooleanParameter("input.sequence.remove_saturated_sites", mapnh.getParams(), false, "", true, 1);
+      if (!removeSaturated) {
+        ofstream debug ("DEBUG_likelihoods.txt", ios::out);
+        for (size_t i = 0; i < sites->getNumberOfSites(); i++)
+        {
+          debug << "Position " << sites->getSite(i).getPosition() << " = " << tl->getLogLikelihoodForASite(i) << endl; 
+        }
+        debug.close();
+        ApplicationTools::displayError("!!! Site-specific likelihood have been written in file DEBUG_likelihoods.txt .");
+        ApplicationTools::displayError("!!! 0 values (inf in log) may be due to computer overflow, particularily if datasets are big (>~500 sequences).");
+        ApplicationTools::displayError("!!! You may want to try input.sequence.remove_saturated_sites = yes to ignore positions with likelihood 0.");
+        exit(1);
+      } else {
+        for (size_t i = sites->getNumberOfSites(); i > 0; --i) {
+          if (isinf(tl->getLogLikelihoodForASite(i - 1))) {
+            ApplicationTools::displayResult("Ignore saturated site", sites->getSite(i - 1).getPosition());
+            sites->deleteSite(i - 1);
+          }
+        }
+        ApplicationTools::displayResult("Number of sites retained", sites->getNumberOfSites());
+        tl->setData(*sites);
+        tl->initialize();
+        ll = tl->getValue();
+        if (isinf(ll)) {
+          throw Exception("Likelihood is still 0 after saturated sites are removed! Looks like a bug...");
+        }
+        ApplicationTools::displayResult("Initial log likelihood", TextTools::toString(-ll, 15));
+      }
+    }
+    
+ 
     // Cleaning up:
     delete alphabet;
     delete sites;
@@ -1032,3 +959,6 @@ int main(int args, char** argv)
 
   return 0;
 }
+
+
+*/
