@@ -163,7 +163,7 @@ int main(int args, char ** argv)
   Tree* tree = PhylogeneticsApplicationTools::getTree(substory.getParams());
   ApplicationTools::displayResult("Number of leaves", TextTools::toString(tree->getNumberOfLeaves()));
   
-  string treeWIdPath = ApplicationTools::getAFilePath("output.tree_ids.file", substory.getParams(), false, false);
+  string treeWIdPath = ApplicationTools::getAFilePath("input.tree.file", substory.getParams(), false, false) + "_WithId";
   if (treeWIdPath != "none")
   {
     TreeTemplate<Node> ttree(*tree);
@@ -179,9 +179,6 @@ int main(int args, char ** argv)
     treeWriter.enableExtendedBootstrapProperty("NodeId");
     ApplicationTools::displayResult("Writing tagged tree to", treeWIdPath);
     treeWriter.write(ttree, treeWIdPath);
-    delete tree;
-    cout << "BppAncestor's done." << endl;
-    exit(0);
   }
 
   bool checkTree = ApplicationTools::getBooleanParameter("input.tree.check_root", substory.getParams(), true, "", true, false);
@@ -525,8 +522,9 @@ int main(int args, char ** argv)
   //
   //////////////////////////////////////////////////////////////////////////////
   
+  std::cout << "\t\t Ancestral sequence reconstruction over. Starting substitution mapping." <<std::endl;
   
-      //
+    //
     // Initialize the parameters for the mapping:
     //
 
@@ -599,9 +597,9 @@ int main(int args, char ** argv)
       throw Exception("Unsupported substitution categorization: " + regType);
 
     //Write categories:
-    for (size_t i = 0; i < reg->getNumberOfSubstitutionTypes(); ++i)
+   /* for (size_t i = 0; i < reg->getNumberOfSubstitutionTypes(); ++i)
       ApplicationTools::displayResult("  * Count type " + TextTools::toString(i + 1), reg->getTypeName(i + 1));
-
+*/
     // specific parameters to the null models
     string nullModelParams = ApplicationTools::getStringParameter("nullModelParams", substory.getParams(), "");
 
@@ -678,7 +676,7 @@ int main(int args, char ** argv)
     }
     else
       counts = SubstitutionMappingTools::getRelativeCountsPerBranch(*tl, ids, model ? model : modelSet->getModel(0), *reg, stationarity, thresholdSat);
-
+/*
     vector<string> outputDesc = ApplicationTools::getVectorParameter<string>("output.counts", substory.getParams(), ',', "PerType(prefix=)");
     for (vector<string>::iterator it = outputDesc.begin(); it != outputDesc.end(); ++it) {
       string outputType;
@@ -719,7 +717,10 @@ int main(int args, char ** argv)
         }
       }
     }
+*/
 
+
+/*
     // Rounded counts
     vector< vector<size_t> > countsint;
     for (size_t i = 0; i < counts.size(); i++)
@@ -731,9 +732,39 @@ int main(int args, char ** argv)
       }
       countsint.push_back(countsi2);
     }
+*/
 
+  //Outputting the counts as a table format, with counts of each type of substitution per branch id.  
+  string countsOut = ApplicationTools::getAFilePath("output.mapping.file", substory.getParams(), false, false);
+    vector < std::string > outputMatrix;
+  string head  = string("NodeId") + string("\t") ;
+  for (size_t type = 0; type < reg->getNumberOfSubstitutionTypes(); ++type) {
+    head = head + "\t" + reg->getTypeName(type+1) ;
+  }
+  head = head + "\n";
+  outputMatrix.push_back(head);
 
+  //The header is done, now outputting the counts for each branch.
+  string branch;
+  for (size_t id = 0 ; id < ids.size(); ++id) {
+    //Branch id
+    branch = TextTools::toString (ids[id]) ;
+    for (size_t type = 0; type < reg->getNumberOfSubstitutionTypes(); ++type)
+          {
+            branch = branch + "\t" +  TextTools::toString (counts[id][type]);
+          }
+
+    branch = branch + "\n";
+    outputMatrix.push_back(branch);
+  }
   
+  //The output itself  
+    std::ofstream out (countsOut.c_str(), std::ios::out);
+    for (unsigned int i = 0; i < outputMatrix.size(); ++i) {
+      out << outputMatrix[i] <<std::endl;
+    }
+    out.close(); 
+
 
   delete alphabet;
   delete sites;
