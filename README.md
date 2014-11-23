@@ -1,3 +1,5 @@
+Substory needs to be run after bppml. An example is provided in the Example folder.
+
 ##########################################
 ## Meaning of the options to the program:
 ##########################################
