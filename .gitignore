@@ -31,6 +31,7 @@ Makefile
 SubStory/CMakeFiles/
 SubStory/Makefile
 SubStory/cmake_install.cmake
-SubStory/substory
 cmake_install.cmake
+
+*~
 
